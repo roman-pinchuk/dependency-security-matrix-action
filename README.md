@@ -169,7 +169,7 @@ uses: roman-pinchuk/dependency-security-matrix-action@v1
 Pin to a patch release when you need maximum repeatability:
 
 ```yaml
-uses: roman-pinchuk/dependency-security-matrix-action@v1.0.2
+uses: roman-pinchuk/dependency-security-matrix-action@v1.0.3
 ```
 
 ## Development
