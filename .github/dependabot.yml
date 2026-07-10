@@ -6,9 +6,22 @@ updates:
       interval: weekly
       day: monday
     groups:
-      npm-dependencies:
+      action-runtime:
         patterns:
-          - '*'
+          - '@actions/*'
+      build-tooling:
+        patterns:
+          - '@vercel/ncc'
+          - 'typescript'
+        update-types:
+          - minor
+          - patch
+      node-types:
+        patterns:
+          - '@types/node'
+        update-types:
+          - minor
+          - patch
 
   - package-ecosystem: github-actions
     directory: /
