@@ -20,10 +20,12 @@ export async function run(): Promise<void> {
     });
     const findings = await readScannerFindings(inputs);
     const securityStatusAvailable = findings !== undefined;
+    const dependencyNames = new Set(dependencies.map((dependency) => dependency.name));
+    const renderedFindings = findings?.filter((finding) => dependencyNames.has(finding.packageName)) ?? [];
     const latestVersions = inputs.includeLatestVersion ? await fetchLatestVersions(dependencies) : [];
     const result = generateMatrix({
       dependencies,
-      findings: findings ?? [],
+      findings: renderedFindings,
       latestVersions,
       heading: inputs.heading,
       includeLatestVersion: inputs.includeLatestVersion,

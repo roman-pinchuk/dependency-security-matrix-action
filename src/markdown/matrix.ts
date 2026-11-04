@@ -31,7 +31,7 @@ export function generateMatrix(options: MatrixOptions): MatrixResult {
   const latestByPackage = new Map(
     options.latestVersions.map((latestVersion) => [latestVersion.packageName, latestVersion.version]),
   );
-  const headers = ['Dependency', 'Type', 'Current Version'];
+  const headers = ['Dependency', 'Type', 'Requested Version'];
 
   if (options.securityStatusAvailable) headers.push('Security Status');
   if (options.includeLatestVersion) headers.push('Latest npm Version');
@@ -42,7 +42,7 @@ export function generateMatrix(options: MatrixOptions): MatrixResult {
     const row = [
       `**${escapeMarkdown(dependency.name)}**`,
       dependency.scope === 'production' ? 'dependencies' : 'devDependencies',
-      `\`${dependency.requestedVersion}\``,
+      `\`${escapeCode(dependency.requestedVersion)}\``,
     ];
 
     if (options.securityStatusAvailable) {
@@ -106,7 +106,7 @@ function renderRow(cells: string[]): string {
 }
 
 function renderSecurityStatus(findings: SecurityFinding[]): string {
-  if (findings.length === 0) return '🟢 No known issues';
+  if (findings.length === 0) return '🟢 No findings in supplied report';
 
   const severityCounts = severityOrder
     .map((severity) => {
@@ -116,6 +116,8 @@ function renderSecurityStatus(findings: SecurityFinding[]): string {
     })
     .filter(Boolean);
 
+  const unspecifiedCount = findings.filter((finding) => !finding.severity).length;
+  if (unspecifiedCount > 0) severityCounts.push(`⚪ ${unspecifiedCount} unspecified`);
   if (severityCounts.length === 0) return `⚠️ ${findings.length} issue${findings.length === 1 ? '' : 's'}`;
 
   return severityCounts.join(', ');
@@ -139,7 +141,7 @@ function renderInsights(
   if (!options.securityStatusAvailable) {
     insights.push('security unavailable');
   } else if (options.findings.length === 0) {
-    insights.push('no known vulnerabilities');
+    insights.push('no findings in supplied report');
   } else {
     const severityCounts = severityOrder
       .map((severity) => {
@@ -169,6 +171,10 @@ function isOutdated(requestedVersion: string, latestVersion: string): boolean {
   const lat = parseSemver(latestVersion);
   if (!req || !lat) return false;
 
+  if (requestedVersion.includes('<') || requestedVersion.includes('>')) {
+    return !satisfiesComparatorRange(requestedVersion, lat);
+  }
+
   if (lat[0] > req[0]) return true;
   if (lat[0] < req[0]) return false;
 
@@ -178,15 +184,46 @@ function isOutdated(requestedVersion: string, latestVersion: string): boolean {
   return lat[2] > req[2];
 }
 
+function satisfiesComparatorRange(requestedVersion: string, version: [number, number, number]): boolean {
+  const comparators = requestedVersion.match(/(<=|>=|<|>)\s*(\d+(?:\.\d+){0,2})/g);
+  if (!comparators) return false;
+
+  return comparators.every((comparator) => {
+    const operator = comparator.match(/^(<=|>=|<|>)/)?.[1];
+    const value = comparator.match(/(\d+(?:\.\d+){0,2})/)?.[1];
+    const parsed = value ? parseSemver(value) : null;
+    if (!operator || !parsed) return false;
+
+    const comparison = compareVersions(version, parsed);
+    if (operator === '<') return comparison < 0;
+    if (operator === '<=') return comparison <= 0;
+    if (operator === '>') return comparison > 0;
+    return comparison >= 0;
+  });
+}
+
+function compareVersions(left: [number, number, number], right: [number, number, number]): number {
+  for (let index = 0; index < left.length; index += 1) {
+    const leftValue = left[index] ?? 0;
+    const rightValue = right[index] ?? 0;
+    if (leftValue !== rightValue) return leftValue > rightValue ? 1 : -1;
+  }
+  return 0;
+}
+
 function renderLatestVersion(requestedVersion: string, latestVersion: string | undefined): string {
   if (!latestVersion) return 'Unavailable';
 
   if (isOutdated(requestedVersion, latestVersion)) {
-    return `\`${latestVersion}\` ⚠️`;
+    return `\`${escapeCode(latestVersion)}\` ⚠️`;
   }
-  return `\`${latestVersion}\``;
+  return `\`${escapeCode(latestVersion)}\``;
 }
 
 function escapeMarkdown(value: string): string {
-  return value.replace(/\|/g, '\\|');
+  return value.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/[\r\n]/g, ' ');
+}
+
+function escapeCode(value: string): string {
+  return value.replace(/`/g, '\\`').replace(/[\r\n]/g, ' ');
 }

@@ -11,7 +11,11 @@ export function replaceMarkedSection(
       throw new Error(`Could not find a valid marker range: ${options.startMarker} ... ${options.endMarker}`);
     }
 
-    return `${markdown.trimEnd()}\n\n${options.startMarker}${generatedSection}${options.endMarker}\n`;
+    const withoutOrphanMarkers = markdown
+      .replace(options.startMarker, '')
+      .replace(options.endMarker, '')
+      .trimEnd();
+    return `${withoutOrphanMarkers}\n\n${options.startMarker}${generatedSection}${options.endMarker}\n`;
   }
 
   return `${markdown.slice(0, startIndex)}${options.startMarker}${generatedSection}${options.endMarker}${markdown.slice(
