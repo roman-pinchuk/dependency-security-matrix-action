@@ -37121,10 +37121,12 @@ async function run() {
         });
         const findings = await readScannerFindings(inputs);
         const securityStatusAvailable = findings !== undefined;
+        const dependencyNames = new Set(dependencies.map((dependency) => dependency.name));
+        const renderedFindings = findings?.filter((finding) => dependencyNames.has(finding.packageName)) ?? [];
         const latestVersions = inputs.includeLatestVersion ? await (0,_npm_registry_js__WEBPACK_IMPORTED_MODULE_6__/* .fetchLatestVersions */ .b)(dependencies) : [];
         const result = (0,_markdown_matrix_js__WEBPACK_IMPORTED_MODULE_3__/* .generateMatrix */ .z)({
             dependencies,
-            findings: findings ?? [],
+            findings: renderedFindings,
             latestVersions,
             heading: inputs.heading,
             includeLatestVersion: inputs.includeLatestVersion,
@@ -37290,7 +37292,7 @@ const severityIcons = {
 function generateMatrix(options) {
     const findingsByPackage = groupFindings(options.findings);
     const latestByPackage = new Map(options.latestVersions.map((latestVersion) => [latestVersion.packageName, latestVersion.version]));
-    const headers = ['Dependency', 'Type', 'Current Version'];
+    const headers = ['Dependency', 'Type', 'Requested Version'];
     if (options.securityStatusAvailable)
         headers.push('Security Status');
     if (options.includeLatestVersion)
@@ -37300,7 +37302,7 @@ function generateMatrix(options) {
         const row = [
             `**${escapeMarkdown(dependency.name)}**`,
             dependency.scope === 'production' ? 'dependencies' : 'devDependencies',
-            `\`${dependency.requestedVersion}\``,
+            `\`${escapeCode(dependency.requestedVersion)}\``,
         ];
         if (options.securityStatusAvailable) {
             row.push(renderSecurityStatus(findingsByPackage.get(dependency.name) ?? []));
@@ -37347,7 +37349,7 @@ function renderRow(cells) {
 }
 function renderSecurityStatus(findings) {
     if (findings.length === 0)
-        return '🟢 No known issues';
+        return '🟢 No findings in supplied report';
     const severityCounts = severityOrder
         .map((severity) => {
         const count = findings.filter((finding) => finding.severity === severity).length;
@@ -37355,6 +37357,9 @@ function renderSecurityStatus(findings) {
         return count > 0 ? `${icon} ${count} ${severity}` : undefined;
     })
         .filter(Boolean);
+    const unspecifiedCount = findings.filter((finding) => !finding.severity).length;
+    if (unspecifiedCount > 0)
+        severityCounts.push(`⚪ ${unspecifiedCount} unspecified`);
     if (severityCounts.length === 0)
         return `⚠️ ${findings.length} issue${findings.length === 1 ? '' : 's'}`;
     return severityCounts.join(', ');
@@ -37372,7 +37377,7 @@ function renderInsights(options, latestByPackage) {
         insights.push('security unavailable');
     }
     else if (options.findings.length === 0) {
-        insights.push('no known vulnerabilities');
+        insights.push('no findings in supplied report');
     }
     else {
         const severityCounts = severityOrder
@@ -37399,6 +37404,9 @@ function isOutdated(requestedVersion, latestVersion) {
     const lat = parseSemver(latestVersion);
     if (!req || !lat)
         return false;
+    if (requestedVersion.includes('<') || requestedVersion.includes('>')) {
+        return !satisfiesComparatorRange(requestedVersion, lat);
+    }
     if (lat[0] > req[0])
         return true;
     if (lat[0] < req[0])
@@ -37409,16 +37417,48 @@ function isOutdated(requestedVersion, latestVersion) {
         return false;
     return lat[2] > req[2];
 }
+function satisfiesComparatorRange(requestedVersion, version) {
+    const comparators = requestedVersion.match(/(<=|>=|<|>)\s*(\d+(?:\.\d+){0,2})/g);
+    if (!comparators)
+        return false;
+    return comparators.every((comparator) => {
+        const operator = comparator.match(/^(<=|>=|<|>)/)?.[1];
+        const value = comparator.match(/(\d+(?:\.\d+){0,2})/)?.[1];
+        const parsed = value ? parseSemver(value) : null;
+        if (!operator || !parsed)
+            return false;
+        const comparison = compareVersions(version, parsed);
+        if (operator === '<')
+            return comparison < 0;
+        if (operator === '<=')
+            return comparison <= 0;
+        if (operator === '>')
+            return comparison > 0;
+        return comparison >= 0;
+    });
+}
+function compareVersions(left, right) {
+    for (let index = 0; index < left.length; index += 1) {
+        const leftValue = left[index] ?? 0;
+        const rightValue = right[index] ?? 0;
+        if (leftValue !== rightValue)
+            return leftValue > rightValue ? 1 : -1;
+    }
+    return 0;
+}
 function renderLatestVersion(requestedVersion, latestVersion) {
     if (!latestVersion)
         return 'Unavailable';
     if (isOutdated(requestedVersion, latestVersion)) {
-        return `\`${latestVersion}\` ⚠️`;
+        return `\`${escapeCode(latestVersion)}\` ⚠️`;
     }
-    return `\`${latestVersion}\``;
+    return `\`${escapeCode(latestVersion)}\``;
 }
 function escapeMarkdown(value) {
-    return value.replace(/\|/g, '\\|');
+    return value.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/[\r\n]/g, ' ');
+}
+function escapeCode(value) {
+    return value.replace(/`/g, '\\`').replace(/[\r\n]/g, ' ');
 }
 
 
@@ -37437,7 +37477,11 @@ function replaceMarkedSection(markdown, generatedSection, options) {
         if (options.failOnMissingMarkers) {
             throw new Error(`Could not find a valid marker range: ${options.startMarker} ... ${options.endMarker}`);
         }
-        return `${markdown.trimEnd()}\n\n${options.startMarker}${generatedSection}${options.endMarker}\n`;
+        const withoutOrphanMarkers = markdown
+            .replace(options.startMarker, '')
+            .replace(options.endMarker, '')
+            .trimEnd();
+        return `${withoutOrphanMarkers}\n\n${options.startMarker}${generatedSection}${options.endMarker}\n`;
     }
     return `${markdown.slice(0, startIndex)}${options.startMarker}${generatedSection}${options.endMarker}${markdown.slice(endIndex + options.endMarker.length)}`;
 }
@@ -37452,13 +37496,26 @@ function replaceMarkedSection(markdown, generatedSection, options) {
 /* harmony export */   b: () => (/* binding */ fetchLatestVersions)
 /* harmony export */ });
 async function fetchLatestVersions(dependencies) {
-    return Promise.all(dependencies.map((dependency) => fetchLatestVersion(dependency.name)));
+    const uniqueNames = [...new Set(dependencies.map((dependency) => dependency.name))];
+    const results = new Map();
+    const queue = [...uniqueNames];
+    const workerCount = Math.min(8, queue.length);
+    await Promise.all(Array.from({ length: workerCount }, async () => {
+        while (queue.length > 0) {
+            const packageName = queue.shift();
+            if (!packageName)
+                return;
+            results.set(packageName, await fetchLatestVersion(packageName));
+        }
+    }));
+    return dependencies.map((dependency) => results.get(dependency.name) ?? { packageName: dependency.name });
 }
 async function fetchLatestVersion(packageName) {
     const url = `https://registry.npmjs.org/${encodeURIComponent(packageName)}/latest`;
     try {
         const response = await fetch(url, {
             headers: { accept: 'application/json' },
+            signal: AbortSignal.timeout(10_000),
         });
         if (!response.ok)
             return { packageName };
@@ -37491,7 +37548,7 @@ const snykScanner = {
     parse(report) {
         const reports = Array.isArray(report) ? report : [report];
         const snykReports = reports.filter(isSnykReport);
-        if (snykReports.length !== reports.length) {
+        if (snykReports.length !== reports.length || snykReports.some((report) => !hasValidVulnerabilities(report))) {
             return { valid: false, findings: [] };
         }
         return {
@@ -37514,6 +37571,8 @@ function isSnykReport(report) {
     return vulnerabilities === undefined || Array.isArray(vulnerabilities);
 }
 function toSecurityFinding(vulnerability) {
+    if (!vulnerability || typeof vulnerability !== 'object')
+        return [];
     const snykVulnerability = vulnerability;
     const targetPackage = resolveTargetPackage(snykVulnerability);
     if (!targetPackage)
@@ -37526,6 +37585,16 @@ function toSecurityFinding(vulnerability) {
             title: typeof snykVulnerability.title === 'string' ? snykVulnerability.title : undefined,
         },
     ];
+}
+function hasValidVulnerabilities(report) {
+    if (!Array.isArray(report.vulnerabilities))
+        return report.vulnerabilities === undefined;
+    return report.vulnerabilities.every((vulnerability) => {
+        if (!vulnerability || typeof vulnerability !== 'object')
+            return false;
+        const value = vulnerability;
+        return Boolean(resolveTargetPackage(value));
+    });
 }
 function deduplicateFindings(findings) {
     const seen = new Set();

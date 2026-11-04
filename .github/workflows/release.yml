@@ -18,10 +18,12 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npm run check
+      - name: Verify bundled distribution is committed
+        run: git diff --exit-code --ignore-space-at-eol --text -- dist/
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}

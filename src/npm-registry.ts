@@ -5,7 +5,20 @@ type NpmLatestResponse = {
 };
 
 export async function fetchLatestVersions(dependencies: Dependency[]): Promise<LatestVersion[]> {
-  return Promise.all(dependencies.map((dependency) => fetchLatestVersion(dependency.name)));
+  const uniqueNames = [...new Set(dependencies.map((dependency) => dependency.name))];
+  const results = new Map<string, LatestVersion>();
+  const queue = [...uniqueNames];
+  const workerCount = Math.min(8, queue.length);
+
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (queue.length > 0) {
+      const packageName = queue.shift();
+      if (!packageName) return;
+      results.set(packageName, await fetchLatestVersion(packageName));
+    }
+  }));
+
+  return dependencies.map((dependency) => results.get(dependency.name) ?? { packageName: dependency.name });
 }
 
 async function fetchLatestVersion(packageName: string): Promise<LatestVersion> {
@@ -14,6 +27,7 @@ async function fetchLatestVersion(packageName: string): Promise<LatestVersion> {
   try {
     const response = await fetch(url, {
       headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!response.ok) return { packageName };

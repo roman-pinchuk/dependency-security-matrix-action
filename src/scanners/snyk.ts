@@ -20,7 +20,7 @@ export const snykScanner: ScannerAdapter = {
     const reports = Array.isArray(report) ? report : [report];
     const snykReports = reports.filter(isSnykReport);
 
-    if (snykReports.length !== reports.length) {
+    if (snykReports.length !== reports.length || snykReports.some((report) => !hasValidVulnerabilities(report))) {
       return { valid: false, findings: [] };
     }
 
@@ -46,6 +46,8 @@ function isSnykReport(report: unknown): report is SnykReport {
 }
 
 function toSecurityFinding(vulnerability: unknown): SecurityFinding[] {
+  if (!vulnerability || typeof vulnerability !== 'object') return [];
+
   const snykVulnerability = vulnerability as SnykVulnerability;
   const targetPackage = resolveTargetPackage(snykVulnerability);
   if (!targetPackage) return [];
@@ -58,6 +60,16 @@ function toSecurityFinding(vulnerability: unknown): SecurityFinding[] {
       title: typeof snykVulnerability.title === 'string' ? snykVulnerability.title : undefined,
     },
   ];
+}
+
+function hasValidVulnerabilities(report: SnykReport): boolean {
+  if (!Array.isArray(report.vulnerabilities)) return report.vulnerabilities === undefined;
+
+  return report.vulnerabilities.every((vulnerability) => {
+    if (!vulnerability || typeof vulnerability !== 'object') return false;
+    const value = vulnerability as SnykVulnerability;
+    return Boolean(resolveTargetPackage(value));
+  });
 }
 
 function deduplicateFindings(findings: SecurityFinding[]): SecurityFinding[] {

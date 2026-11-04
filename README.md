@@ -40,7 +40,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+           node-version: 24
           cache: npm
 
       - run: npm ci
@@ -77,12 +77,14 @@ jobs:
 
 With scanner data:
 
+Security rows report findings from the supplied scanner report; a green row does not prove that a dependency was scanned by every possible path.
+
 <details open>
 <summary>Click to collapse / expand (2 outdated, 1 vulnerability: 1 high)</summary>
 
-| Dependency | Type | Current Version | Security Status | Latest npm Version |
+| Dependency | Type | Requested Version | Security Status | Latest npm Version |
 | :--- | :--- | :--- | :--- | :--- |
-| **pino** | dependencies | `^10.0.0` | 🟢 No known issues | `10.3.1` ⚠️ |
+| **pino** | dependencies | `^10.0.0` | 🟢 No findings in supplied report | `10.3.1` ⚠️ |
 | **typescript** | devDependencies | `^5.7.3` | 🔴 1 high | `5.9.3` ⚠️ |
 
 </details>
@@ -94,7 +96,7 @@ Without scanner data:
 <details open>
 <summary>Click to collapse / expand (2 outdated, security unavailable)</summary>
 
-| Dependency | Type | Current Version | Latest npm Version |
+| Dependency | Type | Requested Version | Latest npm Version |
 | :--- | :--- | :--- | :--- |
 | **pino** | dependencies | `^10.0.0` | `10.3.1` ⚠️ |
 | **typescript** | devDependencies | `^5.7.3` | `5.9.3` ⚠️ |

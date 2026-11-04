@@ -38,6 +38,14 @@ describe('snykScanner', () => {
     expect(snykScanner.parse({ error: 'Invalid token' })).toEqual({ valid: false, findings: [] });
   });
 
+  it('marks malformed vulnerability entries as invalid', () => {
+    expect(snykScanner.parse({ vulnerabilities: [{}] })).toEqual({ valid: false, findings: [] });
+  });
+
+  it('accepts an empty vulnerability list as a valid clean report', () => {
+    expect(snykScanner.parse({ vulnerabilities: [] })).toEqual({ valid: true, findings: [] });
+  });
+
   it('attributes transitive vulnerabilities to the direct manifest package from the from path', () => {
     const result = snykScanner.parse({
       vulnerabilities: [
